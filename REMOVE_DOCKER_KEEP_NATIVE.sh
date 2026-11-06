@@ -25,7 +25,9 @@ curl --fail --silent --show-error --max-time 5 \
 say 'Native JCF .NET application is healthy on 127.0.0.1:5180.'
 if command -v docker >/dev/null 2>&1; then
     # Never uninstall the container engine while it has running workloads.
-    running="$(docker ps --format '{{.Names}} ({{.Image}})' 2>/dev/null || true)"
+    if ! running="$(docker ps --format '{{.Names}} ({{.Image}})' 2>/dev/null)"; then
+      fail 'Docker daemon is not responding; cannot verify containers. Inspect manually before removal.'
+    fi
     if [[ -n "$running" ]]; then
       say 'Docker currently hosts running containers:'
       printf '%s\n' "$running"
@@ -45,6 +47,9 @@ do
   fi
 done
 
+if systemctl is-active --quiet kubelet.service; then
+  fail 'Kubernetes kubelet is active; container runtime might be shared. Leaving Docker unchanged.'
+fi
 say 'Disabling Docker Engine; leaving the native jcf-network-manager service untouched.'
 systemctl disable --now docker.service docker.socket containerd.service >/dev/null 2>&1 || true
 
