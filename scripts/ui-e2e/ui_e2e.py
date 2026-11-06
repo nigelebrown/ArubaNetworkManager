@@ -53,7 +53,7 @@ async def main():
         pg.on("response", lambda r: console_errors.append(f"HTTP {r.status} {r.url}") if r.status >= 500 else None)
 
         # 1. Every navigation page renders interactively without the error UI.
-        await open_page(pg, "/", "operator")
+        await open_page(pg, "/", "admin")
         nav = await pg.locator("nav a").evaluate_all("els => els.map(e => e.getAttribute('href'))")
         bad = []
         for href in [h for h in nav if h and h.startswith("/") and not h.startswith("/account")]:
@@ -189,13 +189,12 @@ async def main():
         msg = await feedback(pg)
         record("Viewer is refused when running analysis", "role required" in msg.lower(), msg)
 
-        # 12. Capability certification is admin-only.
-        await open_page(pg, "/capabilities", "operator")
-        btn = pg.get_by_role("button", name="Record evidence (admin only)")
-        if await btn.count():
-            await btn.click()
-            msg = await feedback(pg)
-            record("Operator cannot certify device capabilities", "administrator" in msg.lower(), msg)
+        # 12. Capability administration is restricted at the HTTP boundary.
+        # Do not navigate the browser to a page that intentionally returns 403.
+        await open_page(pg, "/devices", "operator")
+        restricted = await pg.request.get(BASE + "/capabilities")
+        record("Operator cannot certify device capabilities", restricted.status == 403,
+               f"HTTP {restricted.status}")
 
         # 13. Audit trail captured every action with the real actor names.
         await open_page(pg, "/audit", "admin")
