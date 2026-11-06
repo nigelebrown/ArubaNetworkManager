@@ -14,8 +14,18 @@ using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder=WebApplication.CreateBuilder(args);
+// Containerized Identity cookies must survive restarts; keys are stored only in a protected volume.
+var dataProtectionPath=builder.Configuration["Jcf:DataProtectionKeysPath"];
+if(!string.IsNullOrWhiteSpace(dataProtectionPath))
+{
+    Directory.CreateDirectory(dataProtectionPath);
+    builder.Services.AddDataProtection()
+        .SetApplicationName("Jcf.NetworkManager")
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath));
+}
 var demo=builder.Configuration.GetValue<bool>("Jcf:DemoMode");
 if(demo && !(builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing")))
     throw new InvalidOperationException("DemoMode cannot run in Production. Set ASPNETCORE_ENVIRONMENT=Development for isolated demos.");
@@ -62,7 +72,9 @@ builder.Services.AddRateLimiter(o => {
 if(demo)
 {
     // Do not expose development's synthetic identity beyond the same machine.
-    builder.WebHost.UseUrls("http://127.0.0.1:5180");
+    // Docker publishes only to the host loopback; listen on all container interfaces internally.
+    if(!builder.Configuration.GetValue<bool>("Jcf:DockerMode"))
+        builder.WebHost.UseUrls("http://127.0.0.1:5180");
     builder.Services.AddAuthentication("Demo")
         .AddScheme<AuthenticationSchemeOptions,DemoAuthenticationHandler>("Demo",_=>{});
     builder.Services.AddDbContextFactory<NetworkDbContext>(o=>o.UseInMemoryDatabase(builder.Configuration["Jcf:DemoDatabaseName"] ?? "JCF-NetworkManager-Demo"));
