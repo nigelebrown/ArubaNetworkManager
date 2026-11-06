@@ -362,7 +362,8 @@ public sealed class DemoApiEndToEndTests : IClassFixture<DemoApiEndToEndTests.Is
         client.DefaultRequestHeaders.Add("Cookie", "jcf_demo_persona=" + persona);
         return client;
     }
-    private static string NewIp() => "10.77." + Random.Shared.Next(1, 250) + "." + Random.Shared.Next(1, 250);
+    private static int nextTestIp = 100;
+    private static string NewIp() => "198.51.100." + Interlocked.Increment(ref nextTestIp);
 
     [Fact]
     public async Task Domain_errors_are_problem_responses_not_500()
