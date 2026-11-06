@@ -1,0 +1,55 @@
+@page "/devices"
+@attribute [Authorize]
+@inject IDbContextFactory<NetworkDbContext> DbFactory
+@inject SiteAccessService Sites
+@inject DeviceService DevicesService
+@inject AuthenticationStateProvider Authentication
+@inject IConfiguration Config
+<h1>Device registration & API discovery</h1>
+<p class="lede">Register one Aruba device by management IP. Read-only probes never alter the AP or switch.</p>
+<div class="panel"><h2>Add device</h2>
+<div class="fields">
+ <label>Display name<input @bind="name" placeholder="ICT LAB AP-505" /></label>
+ <label>Equipment type<select @bind="kind"><option value="Ap505">Aruba AP-505</option><option value="Ap535">Aruba AP-535</option><option value="Cx6100">Aruba CX 6100</option><option value="Cx6200">Aruba CX 6200</option></select></label>
+ <label>Management IP<input @bind="ip" placeholder="192.0.2.71" /></label>
+ <label>Secret reference (not password)<input @bind="secretRef" placeholder="LAB_AP" /></label>
+ <label>Location<select @bind="locationString"><option value="">Unassigned</option>@foreach(var loc in locations){<option value="@loc.Id">@loc.Name</option>}</select></label>
+</div>
+<p class="muted">Store device username/password in server environment variables, not this form or database. Production TLS must validate the device certificate or pin its SHA-256 fingerprint.</p>
+<button @onclick="RegisterAsync">Register device</button>
+@if(!string.IsNullOrEmpty(message)){<p class="feedback" role="status">@message</p>}
+</div>
+<div class="panel"><h2>Registered network devices</h2>
+@if(devices.Count==0){<p class="muted">No registered equipment.</p>}
+else {<table><thead><tr><th>Name / IP</th><th>Model</th><th>Firmware</th><th>Health</th><th>Action</th></tr></thead><tbody>
+@foreach(var d in devices){<tr><td><b>@d.Name</b><br/><small>@d.ManagementIp</small></td><td>@d.Kind</td><td>@(d.Firmware??"Unknown")</td><td>@d.LastStatus</td>
+<td><button class="smallbutton" disabled="@working" @onclick="()=>ProbeAsync(d.Id)">Read APIs</button></td></tr>}
+</tbody></table>}
+@if(working){<div class="banner">Reading device endpoints. No changes will be made.</div>}
+@if(lastProbe is not null){<div class="results"><h3>Most recent API probe</h3><p>Connection: @(lastProbe.Connected?"Authenticated":"Not authenticated") · APs: @(lastProbe.ApCount?.ToString()??"Unknown") · Clients: @(lastProbe.ClientCount?.ToString()??"Unknown")</p>
+@foreach(var check in lastProbe.ApiChecks){<div class="checkline">@check</div>}
+@if(lastProbe.Issue is not null){<p class="error">@lastProbe.Issue</p>}</div>}
+</div>
+@code {
+ private string name="",ip="",secretRef="",kind="Ap505",locationString="",message="";
+ private bool working;
+ private List<Device> devices=new(); private List<Location> locations=new(); private ProbeResult? lastProbe;
+ protected override async Task OnInitializedAsync()=>await Reload();
+ private async Task Reload(){await using var db=await DbFactory.CreateDbContextAsync();
+ var __scope=await Sites.ForUserAsync((await Authentication.GetAuthenticationStateAsync()).User);
+ var __visible=__scope.Devices(db.Devices.AsNoTracking());devices=await __visible.OrderBy(x=>x.Name).ToListAsync();locations=await __scope.Locations(db.Locations.AsNoTracking()).OrderBy(x=>x.Name).ToListAsync();}
+ private async Task RegisterAsync(){try{
+  var user=(await Authentication.GetAuthenticationStateAsync()).User;
+  if(!JcfRoles.IsOperator(user)) throw new UnauthorizedAccessException("Operator role required.");
+  var loc=Guid.TryParse(locationString,out var id)? id : (Guid?)null;
+  await DevicesService.RegisterAsync(name,Enum.Parse<DeviceKind>(kind),ip,secretRef,loc,user.Identity?.Name??"unknown");
+  message="Device registered; API validation not yet performed.";name="";ip="";await Reload();
+ }catch(Exception ex){message=ex.Message;}}
+ private async Task ProbeAsync(Guid id){working=true;message="";lastProbe=null;StateHasChanged();try{
+  var user=(await Authentication.GetAuthenticationStateAsync()).User;
+  if(!JcfRoles.IsOperator(user)) throw new UnauthorizedAccessException("Operator role required.");
+  lastProbe=await DevicesService.ProbeAsync(id,user.Identity?.Name??"unknown");
+  message=lastProbe.Connected?"API session authenticated. Read results captured.":"Device API not verified.";
+  await Reload();
+ }catch(Exception ex){message=ex.GetType().Name+": "+ex.Message;}finally{working=false;}}
+}

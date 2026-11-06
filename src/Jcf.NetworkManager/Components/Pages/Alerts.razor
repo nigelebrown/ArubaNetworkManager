@@ -1,0 +1,19 @@
+@page "/alerts"
+@attribute [Authorize]
+@inject IDbContextFactory<NetworkDbContext> DbFactory
+@inject SiteAccessService Sites
+@inject AuthenticationStateProvider Authentication
+<h1>Incidents, telemetry & safety alerts</h1>
+<p class="lede">Audit-friendly monitoring of API availability, RF policy drift, missing client measurements and any failed restoration.</p>
+<section class="panel"><h2>Current alerts</h2>
+@if(alerts.Count==0){<p class="muted">No recorded alerts. A lack of samples is unknown, not proof of network health.</p>}
+else{<table><thead><tr><th>Severity</th><th>Category</th><th>Details</th><th>First seen UTC</th></tr></thead><tbody>
+@foreach(var a in alerts){<tr><td><span class="chip">@a.Severity</span></td><td>@a.Category</td><td>@a.Detail</td><td>@a.FirstSeenUtc.ToString("yyyy-MM-dd HH:mm")</td></tr>}
+</tbody></table>}</section>
+<section class="panel"><h2>Newest telemetry</h2><table><thead><tr><th>Device</th><th>Timestamp UTC</th><th>API</th><th>Clients</th><th>Issue</th></tr></thead><tbody>
+@foreach(var t in samples){<tr><td>@(t.DeviceId.ToString()[..8])</td><td>@t.AtUtc.ToString("yyyy-MM-dd HH:mm")</td><td>@(t.ApiConnected?"Connected":"Unavailable")</td><td>@(t.ClientCount?.ToString()??"Unknown")</td><td>@(t.Problem??"—")</td></tr>}
+</tbody></table></section>
+@code {private List<NetworkAlert> alerts=new();private List<TelemetrySnapshot> samples=new();
+ protected override async Task OnInitializedAsync(){await using var db=await DbFactory.CreateDbContextAsync();
+ var __scope=await Sites.ForUserAsync((await Authentication.GetAuthenticationStateAsync()).User);
+ var __visible=__scope.Devices(db.Devices.AsNoTracking());alerts=await db.NetworkAlerts.AsNoTracking().Where(x=>__visible.Any(d=>d.Id==x.DeviceId)).OrderByDescending(x=>x.LastSeenUtc).Take(100).ToListAsync();samples=await db.TelemetrySnapshots.AsNoTracking().Where(x=>__visible.Any(d=>d.Id==x.DeviceId)).OrderByDescending(x=>x.AtUtc).Take(50).ToListAsync();}}

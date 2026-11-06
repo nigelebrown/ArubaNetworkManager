@@ -1,0 +1,44 @@
+name: JCF Network Manager - Build and Tests
+on:
+  push:
+  pull_request:
+jobs:
+  dotnet-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore and test
+        run: dotnet test tests/Jcf.NetworkManager.Tests.csproj -c Release
+      - name: Pilot client transport / credential-handling safety tests
+        run: python3 scripts/TEST_REAL_PILOT_CLIENT_OFFLINE.py
+      - name: Source safety check
+        run: |
+          python3 -m pip install --user 'Pygments==2.19.2'
+          python3 scripts/verify_enterprise_source.py
+  browser-e2e:
+    runs-on: ubuntu-latest
+    needs: dotnet-test
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright client (uses the runner's preinstalled Chrome)
+        run: python3 -m pip install 'playwright==1.48.0'
+      - name: Demo-mode browser end-to-end test
+        run: CHROME_PATH=/usr/bin/google-chrome scripts/RUN_UI_E2E_LINUX.sh "$RUNNER_TEMP/ui-e2e"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-e2e-evidence
+          path: ${{ runner.temp }}/ui-e2e*

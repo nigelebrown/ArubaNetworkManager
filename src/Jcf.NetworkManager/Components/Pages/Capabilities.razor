@@ -1,0 +1,34 @@
+@page "/capabilities"
+@attribute [Authorize]
+@using Jcf.NetworkManager.Workflow
+@inject IDbContextFactory<NetworkDbContext> DbFactory
+@inject SiteAccessService Sites
+@inject CapabilityService CapabilitiesSvc
+@inject AuthenticationStateProvider Authentication
+<h1>Device API capability certification</h1>
+<p class="lede">Track verified device/firmware operations separately from vendor documentation. Do not certify a write without peer-reviewed lab evidence.</p>
+<div class="banner">AP-505 lab evidence establishes basic SSID/VLAN, airtime fairness, band steering and minimum power changes. AP-535 and both CX models still require model-specific live certification. This page records evidence; it does not test device writes.</div>
+<section class="panel"><h2>Record reviewed API capability</h2><div class="formgrid">
+<label>Device<select @bind="selectedDevice"><option value="">Select device</option>@foreach(var d in devices){<option value="@d.Id.ToString()">@d.Name · @d.Firmware</option>}</select></label>
+<label>Operation<select @bind="action"><option value="CreateSsid">Create SSID + VLAN</option><option value="ChangeBandSteering">ARM band steering</option><option value="ChangeMinTxPower">ARM min power</option><option value="CreateSwitchVlan">Switch VLAN create</option></select></label>
+<label>Capability status<select @bind="state"><option value="Unknown">Unknown</option><option value="ReadVerified">Read verified</option><option value="WriteVerified">Write/restore lab-verified</option><option value="Unsupported">Unsupported</option><option value="Blocked">Blocked by device management mode</option></select></label>
+<label>Reviewed evidence reference<input @bind="evidence" placeholder="Lab report ID / reviewed change ticket" /></label></div>
+<div class="actionbar"><button @onclick="Save">Record evidence (admin only)</button></div>
+@if(message.Length>0){<p role="status" class="feedback">@message</p>}</section>
+<section class="panel"><h2>Current capability matrix</h2>
+<table><thead><tr><th>Device</th><th>Firmware</th><th>Operation</th><th>Certification</th><th>Evidence</th></tr></thead><tbody>
+@foreach(var c in records){<tr><td>@(devices.FirstOrDefault(d=>d.Id==c.DeviceId)?.Name??"Unknown")</td><td>@c.Firmware</td><td>@c.Operation</td><td><span class="chip">@c.State</span></td><td>@c.EvidenceReference</td></tr>}
+</tbody></table></section>
+@code {
+ private List<Device> devices=new();private List<DeviceCapability> records=new();private string selectedDevice="",action="CreateSsid",state="Unknown",evidence="",message="";
+ protected override async Task OnInitializedAsync()=>await Reload();
+ private async Task Reload(){await using var db=await DbFactory.CreateDbContextAsync();
+ var __scope=await Sites.ForUserAsync((await Authentication.GetAuthenticationStateAsync()).User);
+ var __visible=__scope.Devices(db.Devices.AsNoTracking());devices=await __visible.OrderBy(x=>x.Name).ToListAsync();records=await db.DeviceCapabilities.AsNoTracking().Where(x=>__visible.Any(d=>d.Id==x.DeviceId)).ToListAsync();}
+ private async Task Save(){try{var principal=(await Authentication.GetAuthenticationStateAsync()).User;
+ JcfRoles.RequireAdmin(principal);
+ if(!Guid.TryParse(selectedDevice,out var id)||!Enum.TryParse<ConfigAction>(action,out var ac)||!Enum.TryParse<ApiCapabilityState>(state,out var s))throw new ArgumentException("Choose device and valid capability.");
+ await CapabilitiesSvc.RecordAsync(id,ac,s,evidence,principal.Identity?.Name??"unknown",JcfRoles.IsAdmin(principal));
+ message="Evidence recorded against the current device firmware. Certification will expire on firmware change.";await Reload();
+ }catch(Exception ex){message=ex.Message;}}
+}

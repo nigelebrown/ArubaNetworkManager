@@ -1,0 +1,27 @@
+@page "/switches"
+@attribute [Authorize]
+@inject IDbContextFactory<NetworkDbContext> DbFactory
+@inject SiteAccessService Sites
+@inject AuthenticationStateProvider Authentication
+<h1>Switches, VLANs & interfaces</h1>
+<p class="lede">AOS-CX 6100/6200 uses HTTPS REST port 443 for direct status, VLAN and port inventory.</p>
+<div class="banner">Switch VLAN and port configuration are tracked in the SRS, but write actions remain disabled until CX lab certification, approval and rollback are implemented.</div>
+<section class="panel"><h2>Discovered switches</h2>
+<table><thead><tr><th>Switch</th><th>Model</th><th>Status</th><th>VLAN objects</th><th>Interfaces</th></tr></thead><tbody>
+@foreach(var d in devices){var latest=samples.FirstOrDefault(s=>s.DeviceId==d.Id);
+<tr><td>@d.Name<br/><small>@d.ManagementIp</small></td><td>@d.Kind</td><td>@d.LastStatus</td><td>@(latest?.VlanCount?.ToString()??"Unknown")</td><td>@(latest?.PortCount?.ToString()??"Unknown")</td></tr>}
+</tbody></table>
+@if(devices.Count==0){<p class="muted">No CX devices registered.</p>}
+</section>
+<section class="panel"><h2>Upcoming controlled configuration workflow</h2>
+<p>Create/verify VLAN → preview access/trunk membership → validate AP uplink → obtain change approval → apply and verify → restore if needed.</p>
+<p class="muted">The live port/VLAN editor is not enabled in Release 0.1; this page does not send configuration requests.</p>
+</section>
+@code {
+ private List<Device> devices=new();private List<TelemetrySnapshot> samples=new();
+ protected override async Task OnInitializedAsync(){await using var db=await DbFactory.CreateDbContextAsync();
+ var __scope=await Sites.ForUserAsync((await Authentication.GetAuthenticationStateAsync()).User);
+ var __visible=__scope.Devices(db.Devices.AsNoTracking());
+ devices=await __visible.Where(x=>x.Kind==DeviceKind.Cx6100||x.Kind==DeviceKind.Cx6200).ToListAsync();
+ samples=await db.TelemetrySnapshots.AsNoTracking().Where(x=>__visible.Any(d=>d.Id==x.DeviceId)).OrderByDescending(x=>x.AtUtc).Take(100).ToListAsync();}
+}

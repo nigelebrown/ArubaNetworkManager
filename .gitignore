@@ -1,0 +1,21 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.pfx
+*.pem
+*.key
+*.env
+appsettings.Development.json
+*.log
+*.db
+
+# JCF local secrets and generated test evidence
+**/appsettings.Production.json
+**/*.secret
+**/TestResults/
+**/__pycache__/
+docs/verification-0.8.1/screenshots/
