@@ -48,6 +48,10 @@ cleanup(){
 trap cleanup EXIT
 say 'Cloning main from GitHub, not a downloaded application ZIP'
 git clone --quiet --depth 1 --branch main "$REPO" "$STAGING" || die 'GitHub clone failed'
+# Fail closed: this Docker release requires the user-provided 0.9.0 application source.
+if ! grep -q '<Version>0\\.9\\.0</Version>' "$STAGING/src/Jcf.NetworkManager/Jcf.NetworkManager.csproj"; then
+  die 'GitHub still contains the older application. Publish v0.9.0 using the supplied Windows uploader before installing.'
+fi
 for file in Jcf.NetworkManager.slnx src/Jcf.NetworkManager/Jcf.NetworkManager.csproj Dockerfile compose.yaml deploy/docker/ai-reviewer/reviewer.py deploy/docker/sanitize_log.py deploy/docker/app-entrypoint.sh deploy/docker/tests/test_reviewer.py; do
   [[ -s "$STAGING/$file" ]] || die "Missing source file $file"
 done
