@@ -1,0 +1,16 @@
+# Additional, explicitly authorized SQL pilot overlay only.
+services:
+  app:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jcf__DemoMode: 'false'
+      Jcf__EnableDeviceWrites: 'false'
+      Jcf__LiveLabWrites__Enabled: 'false'
+      Jcf__PilotAcceptance__Enabled: 'false'
+      Jcf__DataProtectionKeysPath: /app/data/keys
+      Jcf__BootstrapAdmin__Username: ${JCF_ADMIN_USERNAME:?Set JCF_ADMIN_USERNAME}
+    secrets: [sql_connection, bootstrap_admin_password]
+
+secrets:
+  sql_connection: {file: ./secrets/sql_connection.txt}
+  bootstrap_admin_password: {file: ./secrets/bootstrap_admin_password.txt}
