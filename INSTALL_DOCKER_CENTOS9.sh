@@ -55,7 +55,8 @@ SHA=$(git -C "$STAGING" rev-parse --short=12 HEAD)
 printf 'JCF_RELEASE_TAG=%s\nJCF_PORT=%s\nJCF_AI_MODEL=%s\n' "$SHA" "$PORT" "$MODEL" > "$STAGING/.env"
 chmod 0600 "$STAGING/.env"
 mkdir -p "$STAGING/ai-input"
-chmod 0750 "$STAGING/ai-input"
+# Contains sanitized compiler diagnostics only; readonly reviewer UID must traverse it.
+chmod 0755 "$STAGING/ai-input"
 cd "$STAGING"
 docker volume create jcf_ollama_models >/dev/null
 docker compose config --quiet || die 'Invalid Docker Compose configuration'
