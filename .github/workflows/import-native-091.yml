@@ -1,0 +1,99 @@
+name: Import Verified Native JCF v0.9.1 Source
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jcf-native-source-import-v091
+  cancel-in-progress: false
+
+jobs:
+  import-native:
+    if: github.actor == 'nigelebrown' && (github.event_name == 'workflow_dispatch' || github.event.release.tag_name == 'v0.9.1-native')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Download exact approved archive and validate checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/jcf"
+          gh release download v0.9.1-native --repo "$GITHUB_REPOSITORY" \
+            --pattern JCF_Network_Manager_v0_9_1_NATIVE_SQL_IDENTITY.zip \
+            --dir "$RUNNER_TEMP/jcf"
+          printf '%s  %s\n' \
+            '71d830b4f9be35ce0a482d11bcdcec0e6d6e69f3ea6d53a9ff731df4d82abad1' \
+            "$RUNNER_TEMP/jcf/JCF_Network_Manager_v0_9_1_NATIVE_SQL_IDENTITY.zip" | sha256sum -c -
+      - name: Extract checked code paths only
+        env:
+          ARCHIVE: ${{ runner.temp }}/jcf/JCF_Network_Manager_v0_9_1_NATIVE_SQL_IDENTITY.zip
+        run: |
+          python3 - <<'PY'
+          import os, re, stat, zipfile
+          from pathlib import Path, PurePosixPath
+          arc=Path(os.environ["ARCHIVE"])
+          prefix="ArubaNetworkManager/"
+          approved={"Jcf.NetworkManager.slnx","README.md","README_NATIVE_PRODUCTION.md",
+                    "CHANGELOG.md",".gitignore",".dockerignore",
+                    ".config/dotnet-tools.json"}
+          dirs=("src/","tests/","scripts/","deploy/native/","docs/")
+          written=[]
+          with zipfile.ZipFile(arc) as z:
+            for entry in z.infolist():
+              if entry.is_dir(): continue
+              name=entry.filename
+              if not name.startswith(prefix): raise SystemExit("Unrecognized archive root")
+              rel=name[len(prefix):]
+              parts=PurePosixPath(rel).parts
+              if not rel or rel.startswith("/") or "\\" in rel or ".." in parts:
+                raise SystemExit("Unsafe archive member")
+              if not (rel in approved or any(rel.startswith(d) for d in dirs)):
+                raise SystemExit("Unexpected path: "+rel)
+              if entry.file_size>200000 or ((entry.external_attr>>16)&0o170000)==stat.S_IFLNK:
+                raise SystemExit("Oversized/symlink member rejected: "+rel)
+              data=z.read(entry)
+              if b"\x00" in data: raise SystemExit("Binary member rejected")
+              if re.search(rb"(gh[pousr]_[A-Za-z0-9]{20,}|sk-proj-[A-Za-z0-9_-]{12,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)",data):
+                raise SystemExit("Possible secret: "+rel)
+              if re.search(rb"\b10\.(?:190|101|102|103)\.",data):
+                raise SystemExit("Internal address literal not permitted: "+rel)
+              dest=Path(rel);dest.parent.mkdir(parents=True,exist_ok=True)
+              dest.write_bytes(data);written.append(rel)
+          if len(written)<95: raise SystemExit("Incomplete release")
+          project=Path("src/Jcf.NetworkManager/Jcf.NetworkManager.csproj").read_text()
+          if "<Version>0.9.1</Version>" not in project: raise SystemExit("Wrong application version")
+          for req in ("deploy/native/PREPARE_NATIVE.sh","deploy/native/ACTIVATE_NATIVE.sh",
+                      "src/Jcf.NetworkManager/Migrations/20261106123050_DeviceIntegration.cs"):
+            if not Path(req).is_file(): raise SystemExit("Required file missing: "+req)
+          print("Verified native v0.9.1 source:",len(written),"files")
+          PY
+      - name: Offline source and installer security checks
+        run: |
+          set -euo pipefail
+          bash -n deploy/native/PREPARE_NATIVE.sh deploy/native/ACTIVATE_NATIVE.sh
+          python3 deploy/native/TEST_NATIVE_SAFETY.py
+          python3 scripts/verify_enterprise_source.py
+      - name: Publish complete native source on main
+        run: |
+          set -euo pipefail
+          git config user.name 'jcf-native-import[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- src tests scripts deploy/native docs .config \
+            Jcf.NetworkManager.slnx README.md README_NATIVE_PRODUCTION.md CHANGELOG.md \
+            .gitignore .dockerignore
+          if git diff --cached --quiet; then
+            echo 'Native source is already current.'
+            exit 0
+          fi
+          git commit -m 'Publish verified native v0.9.1: SQL Identity with simulated devices'
+          git push origin HEAD:main
