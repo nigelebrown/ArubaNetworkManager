@@ -1,12 +1,30 @@
 #!/usr/bin/env bash
-# Compatibility launcher. The legacy non-Docker v0.8.2 installer has been retired.
-# Always require v0.9.0 Docker source and the reviewed DeviceIntegration migration.
+# CentOS Stream 9: native .NET 10 installation, NO Docker.
+# Pulls source from the GitHub main branch; builds/tests/publishes under systemd.
 set -Eeuo pipefail
-[[ ${EUID} -eq 0 ]] || { echo "[JCF] Run with sudo." >&2; exit 1; }
-[[ "${1:-}" == "demo" || "$#" -eq 0 ]] || { echo "[JCF] Only the safe default demo mode is available here." >&2; exit 2; }
-echo "[JCF] Redirecting legacy INSTALL_CENTOS9.sh to the v0.9.0 Docker installer."
-TMP="$(mktemp /tmp/jcf-latest-docker.XXXXXXXX.sh)"
-trap 'rm -f "$TMP"' EXIT
-curl -fsSLo "$TMP" https://raw.githubusercontent.com/nigelebrown/ArubaNetworkManager/main/INSTALL_LATEST_CENTOS9.sh
-bash -n "$TMP"
-bash "$TMP"
+umask 027
+[[ ${EUID} -eq 0 ]] || { echo '[JCF Native] Run with sudo/root' >&2; exit 2; }
+source /etc/os-release
+[[ "${ID:-}" == centos && "${VERSION_ID%%.*}" == 9 ]] || {
+  echo '[JCF Native] CentOS Stream 9 required' >&2; exit 2;
+}
+MODE="${1:-demo}"
+[[ "$MODE" == demo || "$MODE" == pilot ]] || {
+  echo '[JCF Native] Usage: sudo bash INSTALL_CENTOS9.sh demo|pilot' >&2; exit 2;
+}
+command -v git >/dev/null || dnf install -y git ca-certificates
+TEMP="$(mktemp -d /tmp/jcf-native-source.XXXXXXXX)"
+trap 'rm -rf "$TEMP"' EXIT
+echo '[JCF Native] Cloning current application source from GitHub...'
+git clone --quiet --depth 1 --branch main \
+  https://github.com/nigelebrown/ArubaNetworkManager.git "$TEMP/repo"
+[[ -s "$TEMP/repo/Jcf.NetworkManager.slnx" ]] || {
+  echo '[JCF Native] Full .NET source is missing' >&2; exit 1;
+}
+APP_VERSION="$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' "$TEMP/repo/src/Jcf.NetworkManager/Jcf.NetworkManager.csproj" | head -1)"
+[[ -n "$APP_VERSION" ]] || {
+  echo '[JCF Native] Cannot determine real source version' >&2; exit 1;
+}
+echo "[JCF Native] Installing source version $APP_VERSION directly under systemd (NO Docker)."
+bash "$TEMP/repo/deploy/centos9/ONE_CLICK_INSTALL.sh" \
+  --mode "$MODE" --source-dir "$TEMP/repo"
