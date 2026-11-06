@@ -1,10 +1,8 @@
 name: Codex - Application-only review
+# Cloud Codex is OPTIONAL and manual-only. Continuous review now runs locally inside
+# an isolated Ollama Docker network; no code is sent to cloud AI automatically.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-  schedule:
-    - cron: '30 8 * * *'
 permissions:
   contents: read
 concurrency:
