@@ -1,31 +1,29 @@
-# JCF Intelligent Network Manager — CentOS Stream 9 build and integration lab
+# JCF Network Manager — CentOS Stream 9 Deployment
 
-This is a **development/test** deployment of the C# / .NET 10 application. It is **not production certified**. Hardware configuration writes are always disabled in the default installation. SQL Server is hosted separately on a supported SQL Server platform; CentOS Stream 9 hosts only the application/build runner.
+This repository contains the .NET 10 / Blazor application source, EF Core SQL Server migrations and CentOS deployment scripts. It remains a **testing/pilot release**, not a production-certified Aruba Central replacement. Live device writes are **disabled**.
 
-## Quick start (from the full source bundle)
-
-Copy the `JCF_ArubaNetworkManager_CentOS9_Complete_Source.zip` file onto your CentOS Stream 9 test server and extract it:
+## One-click demo installation from GitHub
 
 ```bash
-sudo dnf install -y unzip
-unzip JCF_ArubaNetworkManager_CentOS9_Complete_Source.zip
-cd ArubaNetworkManager
-sudo bash deploy/centos9/ONE_CLICK_INSTALL.sh --mode demo
+curl -fsSLo /tmp/INSTALL_CENTOS9.sh https://raw.githubusercontent.com/nigelebrown/ArubaNetworkManager/main/INSTALL_CENTOS9.sh
+sudo bash /tmp/INSTALL_CENTOS9.sh demo
 ```
 
-The installer installs .NET 10 and other OS dependencies, compiles the application, runs real .NET tests, publishes a versioned build, installs a restricted systemd unit and checks `/healthz`. A failing build/test/health check stops the installation; no success is reported. `--mode demo` binds **only** to `127.0.0.1:5180` and uses an isolated in-memory database. No firewall ports are opened.
+Installs prerequisites, clones the GitHub source, builds, runs offline tests, publishes, registers systemd, and verifies application health. Demo uses an in-memory database and binds to `127.0.0.1:5180` only. No AP/switch REST calls or configuration changes.
 
-From your **Windows 11 PC**, use SSH port forwarding:
+Inspect the service:
 
-```powershell
-ssh -L 5180:127.0.0.1:5180 YOUR_LINUX_USER@YOUR_TEST_SERVER
+```bash
+sudo systemctl status jcf-network-manager --no-pager
+sudo journalctl -u jcf-network-manager -n 100 --no-pager
+curl -fsS http://127.0.0.1:5180/healthz
 ```
 
-Then open `http://127.0.0.1:5180` locally.
+From your workstation: `ssh -L 5180:127.0.0.1:5180 user@centos-server`, then browse `http://127.0.0.1:5180`.
 
-## Set up the real SQL-backed integration pilot
+## SQL-backed hardware pilot — separately approved
 
-Before this step, have a **separate** SQL Server instance with a disposable database name starting with `JCFNetworkManagerPilot_`, a TLS certificate trusted by CentOS, least-privilege application/DBA credentials, and a full database backup if applicable.
+Provide a **separate supported SQL Server host**, disposable pilot database named `JCFNetworkManagerPilot_*`, trusted SQL TLS certificate and least-privilege database credentials. Configure secrets **outside the Git checkout**, under `/etc/jcfnetwork`. Then execute the steps below from the cloned source directory:
 
 ```bash
 sudo bash deploy/centos9/CONFIGURE_SQL_PILOT.sh
@@ -33,34 +31,15 @@ sudo bash deploy/centos9/APPLY_PILOT_MIGRATIONS.sh
 sudo bash deploy/centos9/ONE_CLICK_INSTALL.sh --mode pilot
 ```
 
-- SQL credentials and the initial administrator password are prompted interactively and stored **outside the Git checkout** under `/etc/jcfnetwork` as root-owned, group-readable (0640) files. Never upload these files to GitHub.
-- The migration script generates a reviewable SQL file, requires a second explicit approval and applies only to a disposable pilot database. **No migration occurs automatically on application startup.**
-- The production-configured pilot binds **only** to `127.0.0.1:5181`. Access it through an approved internal TLS reverse proxy, not a public HTTP listener. The ASP.NET Identity cookie requires HTTPS.
-- Remove `/etc/jcfnetwork/bootstrap-admin.secret` after first successful initial login and account verification. Keep a secure, audited backup of necessary recovery credentials.
-- Neither mode automatically performs a configuration write to an AP or switch.
+The migration helper generates a reviewable SQL script and requires explicit DBA approval. Database migrations never run silently during startup. Pilot app is loopback-only at `127.0.0.1:5181`; it requires a trusted TLS reverse proxy before user login. Hardware access needs additional allowlists and credential provisioning outside Git. No AP/switch configuration changes are enabled.
 
-## GitHub Actions CI / test server runner
+## Application-only CI and AI review
 
-First, push the source to `nigelebrown/ArubaNetworkManager` with `deploy/centos9/PUSH_SOURCE_TO_GITHUB.sh` from a machine that already has working GitHub SSH key authentication. On GitHub, navigate to **Repository → Settings → Actions → Runners → New self-hosted runner** and copy the short-lived registration token.
+- GitHub-hosted Actions compile and test the application. No JCF network access is provided.
+- Codex code review runs **only** on GitHub-hosted runners and reads application code with no device credentials. It requires a dedicated `OPENAI_API_KEY` GitHub Actions repository secret.
+- Daily offline .NET regression tests on CentOS are executed under a separate account with `PrivateNetwork=true`. No network scans.
+- **Do not install a GitHub self-hosted runner or AI agent on this management server.** Older runner registration instructions are obsolete.
 
-```bash
-sudo bash deploy/centos9/REGISTER_GITHUB_RUNNER.sh
-```
+## Acceptance limitations
 
-The runner is registered under a dedicated `jcfci` account without sudo, SQL secrets or privileged device access. The workflow `.github/workflows/centos9-lab-acceptance.yml` is **manual-only** from the main branch. Run it from **Actions → JCF CentOS Stream 9 - Controlled Lab CI → Run workflow**. Untrusted PR code must never run on this self-hosted runner.
-
-GitHub-hosted PR builds use the separate default `.github/workflows/ci.yml`, which should not have access to any JCF management networks.
-
-## Verify status
-
-```bash
-sudo systemctl status jcf-network-manager
-sudo journalctl -u jcf-network-manager -n 80 --no-pager
-curl -fsS http://127.0.0.1:5180/healthz  # demo only
-```
-
-For pilot mode, use `curl -H 'X-Forwarded-Proto: https' http://127.0.0.1:5181/readyz` from the server. An HTTP status of 200 confirms the DB can be contacted, **not** complete device operational readiness.
-
-## Remaining live acceptance gates
-
-On your JCF network, verify the actual AP-505/AP-535 and CX 6100/6200 APIs, cluster membership, SQL retention, location-scoped permissions and controlled rollback before enabling any change execution. **Passing build and unit tests alone is not production certification.**
+A passing build or demo test does not certify production. Before enabling device writes, validate real SQL persistence, AP-505/AP-535 and CX 6100/6200 API access, cluster blast radius, independently approved configuration changes, readback, rollback, site-scoped RBAC, security/load and HA/DR.
