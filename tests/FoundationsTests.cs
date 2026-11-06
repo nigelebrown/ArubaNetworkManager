@@ -9,7 +9,7 @@ public sealed class FoundationsTests
 {
     private static readonly string[] Networks = {"10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"};
     [Theory]
-    [InlineData("192.0.2.71",true)]
+    [InlineData("10.0.2.71",true)]
     [InlineData("172.16.1.2",true)]
     [InlineData("192.168.10.15",true)]
     [InlineData("8.8.8.8",false)]
