@@ -1,0 +1,35 @@
+name: JCF App CI - no JCF network
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-app-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Require complete application source
+        run: |
+          test -f Jcf.NetworkManager.slnx
+          test -f src/Jcf.NetworkManager/Jcf.NetworkManager.csproj
+      - name: Restore and check package vulnerabilities
+        run: dotnet restore Jcf.NetworkManager.slnx -p:NuGetAuditLevel=moderate -p:NuGetAuditMode=all -warnaserror:NU1902,NU1903,NU1904
+      - name: Build
+        run: dotnet build Jcf.NetworkManager.slnx -c Release --no-restore
+      - name: Run offline tests only
+        env:
+          Jcf__DemoMode: 'true'
+          Jcf__EnableDeviceWrites: 'false'
+          Jcf__LiveLabWrites__Enabled: 'false'
+        run: |
+          dotnet test tests/Jcf.NetworkManager.Tests.csproj -c Release --no-build --no-restore
+          python3 scripts/TEST_REAL_PILOT_CLIENT_OFFLINE.py
