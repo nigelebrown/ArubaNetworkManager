@@ -1,0 +1,95 @@
+name: jcf-network-manager
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jcf-network-manager:${JCF_RELEASE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      Jcf__DockerMode: 'true'
+      Jcf__DemoMode: 'true'
+      Jcf__EnableDeviceWrites: 'false'
+      Jcf__LiveLabWrites__Enabled: 'false'
+      Jcf__PilotAcceptance__Enabled: 'false'
+      Jcf__DataProtectionKeysPath: /app/data/keys
+    ports:
+      - '127.0.0.1:${JCF_PORT:-5180}:8080'
+    networks: [app_net]
+    volumes: [app_data:/app/data]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    pids_limit: 256
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    healthcheck:
+      test: ['CMD','curl','-fsS','http://127.0.0.1:8080/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: local
+      options: {max-size: '10m', max-file: '5'}
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes: [ollama_models:/root/.ollama]
+    networks: [ai_private]
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+      OLLAMA_KEEP_ALIVE: 5m
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    pids_limit: 128
+    healthcheck:
+      test: ['CMD','ollama','list']
+      interval: 20s
+      timeout: 10s
+      retries: 6
+      start_period: 45s
+    logging:
+      driver: local
+      options: {max-size: '10m', max-file: '3'}
+
+  ai-reviewer:
+    build:
+      context: ./deploy/docker/ai-reviewer
+      dockerfile: Dockerfile
+    image: jcf-offline-code-reviewer:local
+    restart: unless-stopped
+    depends_on:
+      ollama: {condition: service_healthy}
+    environment:
+      JCF_AI_MODEL: ${JCF_AI_MODEL:-qwen2.5-coder:1.5b}
+      JCF_REVIEW_INTERVAL_SECONDS: '21600'
+    networks: [ai_private]
+    volumes:
+      - ./src:/review/src:ro,Z
+      - ./tests:/review/tests:ro,Z
+      - ./ai-input:/review/input:ro,Z
+      - ai_reports:/reports
+    read_only: true
+    user: '10001:10001'
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    pids_limit: 64
+    mem_limit: 768m
+    tmpfs: ['/tmp:size=32m,mode=1777']
+    logging:
+      driver: local
+      options: {max-size: '5m', max-file: '3'}
+
+networks:
+  app_net: {driver: bridge}
+  ai_private: {driver: bridge, internal: true}
+
+volumes:
+  app_data:
+  ollama_models: {external: true, name: jcf_ollama_models}
+  ai_reports:
