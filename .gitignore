@@ -19,3 +19,11 @@ appsettings.Development.json
 **/TestResults/
 **/__pycache__/
 docs/verification-0.8.1/screenshots/
+
+# Docker-only local runtime state (never publish credentials or sanitized diagnostics)
+.env
+.env.*
+secrets/
+ai-input/
+ai-reports/
+sql-review/
