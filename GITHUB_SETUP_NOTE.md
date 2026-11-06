@@ -1,15 +1,15 @@
-# JCF Aruba Network Manager — repository initialization
+# JCF Aruba Network Manager — GitHub source is published
 
-This private repository is being prepared for the CentOS Stream 9 build and integration-test environment.
+The application source, solution, EF Core SQL Server migrations, automated tests, and CentOS Stream 9 installer are published on `main`.
 
-**Current status:** The repository has been initialized. The complete v0.8.2 application source has **not yet been pushed**. Do not attempt a deployment from this repository until the application files, `Jcf.NetworkManager.slnx`, `src/` and `deploy/centos9/`, are present.
+**One-command CentOS Stream 9 demo installation:**
+```bash
+curl -fsSLo /tmp/INSTALL_CENTOS9.sh https://raw.githubusercontent.com/nigelebrown/ArubaNetworkManager/main/INSTALL_CENTOS9.sh
+sudo bash /tmp/INSTALL_CENTOS9.sh demo
+```
 
-The source release package includes:
-- C# / .NET 10 ASP.NET Core and Blazor application with EF Core SQL Server migration;
-- CentOS Stream 9 one-command build/test and loopback-only service deployment;
-- manually reviewed SQL pilot migration and local administrator bootstrap;
-- manual-only, read-only GitHub Actions test runner with separate unprivileged identity.
+The default demo is loopback-only (127.0.0.1:5180), uses simulated equipment, and makes no Aruba configuration changes. SQL-backed pilot setup requires a separate SQL Server and explicit schema review. No Windows upload steps or ZIP downloads are required.
 
-To complete initial source upload, extract the full source ZIP on a GitHub-authenticated Linux or Windows machine and use `deploy/centos9/PUSH_SOURCE_TO_GITHUB.sh` (Linux) or equivalent authenticated `git add/commit/push`. Never commit SQL passwords, AP credentials, API tokens or runtime environment files.
+Code review AI and CI use GitHub-hosted runners, **not** a GitHub runner installed on the JCF network-management host. Offline application tests on CentOS are isolated using `PrivateNetwork=true`.
 
-Real hardware configuration writes remain disabled, and production certification has not been completed.
+No operational passwords, client identities, SQL secrets or lab IPs should be committed to this public repository. This release is not yet production-certified.
