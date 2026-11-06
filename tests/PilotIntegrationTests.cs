@@ -80,6 +80,8 @@ public sealed class PilotIntegrationTests : IClassFixture<PilotIntegrationTests.
     public async Task Blazor_navigation_pages_are_served()
     {
         using var client=factory.CreateClient();
+        // Navigation acceptance uses the admin persona; scoped operator routes are tested separately.
+        client.DefaultRequestHeaders.Add("Cookie","jcf_demo_persona=admin");
         foreach(var path in new[]{"/","/devices","/locations","/wireless","/switches","/recommendations","/audit","/configuration","/changes","/groups","/capabilities","/alerts","/client-experience","/kiosk"})
         {
             var response=await client.GetAsync(path);
