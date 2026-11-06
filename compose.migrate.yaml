@@ -1,0 +1,14 @@
+services:
+  migrator:
+    build: {context: ., dockerfile: Dockerfile, target: build}
+    profiles: [db-migration]
+    networks: [app_net]
+    entrypoint: ['/bin/sh','/src/deploy/docker/migration-entrypoint.sh']
+    command: [script]
+    secrets: [sql_connection]
+    volumes: ['./sql-review:/review']
+    security_opt: ['no-new-privileges:true']
+    cap_drop: [ALL]
+    pids_limit: 128
+secrets:
+  sql_connection: {file: ./secrets/sql_connection.txt}
